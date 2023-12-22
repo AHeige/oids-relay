@@ -48,15 +48,18 @@ fn main () {
         connected_clients.lock().unwrap().push(c)
     }
 
-    fn send_message_to_all_clients(message: &str, connected_clients: Arc<Mutex<Vec<Client>>>, websocket: &mut WebSocket<TcpStream>) {
+    fn send_message_to_other_clients(sender_id: u32, message: &str, connected_clients: Arc<Mutex<Vec<Client>>>, websocket: &mut WebSocket<TcpStream>) {
         let clients = connected_clients.lock().unwrap();
         for client in clients.iter() {
-            println!("Sending message to client: {}", client.id);
-
-            let json_string = serde_json::to_string(client).expect("Failed to make JSON");
-            let send_object: tungstenite::Message = json_string.into();
-
-            websocket.send(send_object).expect("Ops")
+            if client.id != sender_id {
+                
+                println!("Sending message to client: {}", client.id);
+                
+                let json_string = serde_json::to_string(client).expect("Failed to make JSON");
+                let send_object: tungstenite::Message = json_string.into();
+                
+                websocket.send(send_object).expect("Ops")
+            }
         }
     }
 
@@ -71,6 +74,7 @@ fn main () {
         std::thread::spawn(move || {
             let mut websocket = accept(stream.expect("Stream err")).expect("Could not accept new connections");
             let connected_clients_clone_inner = connected_clients_clone.clone(); // Clone again
+            
             add_new_client(client, connected_clients_clone_inner);
 
 
@@ -80,8 +84,8 @@ fn main () {
                     if msg.is_binary() || msg.is_text() {
                         println!("{}", msg);
                         let connected_clients_list = connected_clients_clone.clone();
-                        
-                        send_message_to_all_clients("Hey, clients!", connected_clients_list,&mut websocket);
+                        let sender_id = connected_clients_clone.lock().unwrap().last().map(|c| c.id).unwrap_or_default();
+                        send_message_to_other_clients(sender_id,"Hey, clients!", connected_clients_list,&mut websocket);
                         //    let send_object: tungstenite::Message = json_string.into();
                         //    websocket.send(send_object).expect("Could not send!")
                         
