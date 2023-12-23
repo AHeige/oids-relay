@@ -1,5 +1,5 @@
 use std::net::{TcpListener, TcpStream};
-use tungstenite::{accept, protocol, client, WebSocket};
+use tungstenite::{accept, protocol, client, WebSocket, Message};
 use rand::{self, Rng};
 use std::sync::{Arc, Mutex};
 use serde::{Serialize, ser::SerializeStruct};
@@ -48,15 +48,16 @@ fn main () {
         connected_clients.lock().unwrap().push(c)
     }
 
-    fn send_message_to_other_clients(sender_id: u32, message: &str, connected_clients: Arc<Mutex<Vec<Client>>>, websocket: &mut WebSocket<TcpStream>) {
+    fn send_message_to_other_clients(sender_id: u32, message: Message, connected_clients: Arc<Mutex<Vec<Client>>>, websocket: &mut WebSocket<TcpStream>) {
         let clients = connected_clients.lock().unwrap();
         for client in clients.iter() {
+            let msg = message.clone();
             if client.id != sender_id {
                 
                 println!("Sending message to client: {}", client.id);
                 
-                let json_string = serde_json::to_string(client).expect("Failed to make JSON");
-                let send_object: tungstenite::Message = json_string.into();
+                // let json_string = serde_json::to_string(message).expect("Failed to make JSON");
+                let send_object: tungstenite::Message = msg;
                 
                 websocket.send(send_object).expect("Ops")
             }
@@ -85,7 +86,7 @@ fn main () {
                         println!("{}", msg);
                         let connected_clients_list = connected_clients_clone.clone();
                         let sender_id = connected_clients_clone.lock().unwrap().last().map(|c| c.id).unwrap_or_default();
-                        send_message_to_other_clients(sender_id,"Hey, clients!", connected_clients_list,&mut websocket);
+                        send_message_to_other_clients(sender_id,msg, connected_clients_list,&mut websocket);
                         //    let send_object: tungstenite::Message = json_string.into();
                         //    websocket.send(send_object).expect("Could not send!")
                         
