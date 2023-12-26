@@ -1,6 +1,6 @@
 use std::net::{TcpListener, TcpStream};
 use tungstenite::{accept, protocol, client, WebSocket, Message};
-use rand::{self, Rng};
+use rand::{self, Rng, seq::index};
 use std::sync::{Arc, Mutex};
 use serde::{Serialize, ser::SerializeStruct};
 
@@ -42,10 +42,28 @@ fn main () {
         rng.gen_range(0..10000)
     }
 
-    let mut connected_clients: Arc<Mutex<Vec<Client>>> = Arc::new(Mutex::new(Vec::new()));
+    let connected_clients: Arc<Mutex<Vec<Client>>> = Arc::new(Mutex::new(Vec::new()));
     
     pub fn add_new_client(c: Client, connected_clients: Arc<Mutex<Vec<Client>>>) {
+        println!("connected_client length before adding new Client: {}", connected_clients.lock().unwrap().len());
         connected_clients.lock().unwrap().push(c)
+    }
+
+    pub fn remove_client(cid: u32, connected_clients: Arc<Mutex<Vec<Client>>>) {
+        println!("removing client");
+        let mut clients = connected_clients.lock().unwrap();
+        
+        println!("Amount of clients before removal: {}", clients.len());
+
+        
+        if let Some(index) = clients.iter().position(|x| x.id == cid) {
+            println!("Client removed with id: {}",  cid);
+            clients.remove(index);
+            println!("Amount of clients after removal: {}", clients.len());
+        } else {
+            println!("Client with id {} not found", cid);
+        }
+        
     }
 
     fn send_message_to_other_clients(sender_id: u32, message: Message, connected_clients: Arc<Mutex<Vec<Client>>>, websocket: &mut WebSocket<TcpStream>) {
@@ -68,13 +86,14 @@ fn main () {
     println!("Waiting for connections on url: {}", url);
     for stream in server.incoming() {
 
-        println!("Spawning new thread...");
         let client = Client::new("Name", generate_random_id());
+        println!("New client {}", client.id);
         let connected_clients_clone = connected_clients.clone();
         
         std::thread::spawn(move || {
             let mut websocket = accept(stream.expect("Stream err")).expect("Could not accept new connections");
             let connected_clients_clone_inner = connected_clients_clone.clone(); // Clone again
+            
             
             add_new_client(client, connected_clients_clone_inner);
 
@@ -83,7 +102,7 @@ fn main () {
                 if websocket.can_read() {
                     let msg = websocket.read().expect("Could not read");
                     if msg.is_binary() || msg.is_text() {
-                        println!("{}", msg);
+                        // println!("{}", msg);
                         let connected_clients_list = connected_clients_clone.clone();
                         let sender_id = connected_clients_clone.lock().unwrap().last().map(|c| c.id).unwrap_or_default();
                         send_message_to_other_clients(sender_id,msg, connected_clients_list,&mut websocket);
@@ -92,7 +111,9 @@ fn main () {
                         
                     }
                 } else {
-                    println!("Connection closed by client with id");
+                    let client_id = connected_clients_clone.lock().unwrap().last().map(|c| c.id).unwrap_or_default();
+                    println!("Connection closed by client with id, {}", client_id);
+                    remove_client(client_id, connected_clients_clone);
                     break;
                 }
             }
