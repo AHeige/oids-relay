@@ -53,7 +53,7 @@ fn main () {
 
     pub fn remove_client(cid: u32, connected_clients: Arc<Mutex<Vec<Arc<Mutex<Client>>>>>) {
         println!("removing client");
-        let mut clients = connected_clients.lock().unwrap();
+        let mut clients = connected_clients.lock().expect("No clients in list");
 
         println!("Amount of clients before removal: {}", clients.len());
 
@@ -79,8 +79,9 @@ fn main () {
                 
                 // let json_string = serde_json::to_string(message).expect("Failed to make JSON");
                 let send_object: tungstenite::Message = msg;
-                
-                client.lock().unwrap().ws.lock().unwrap().send(send_object).expect("Ops")
+                if client.lock().unwrap().ws.lock().unwrap().can_write() {
+                    client.lock().unwrap().ws.lock().unwrap().send(send_object).expect("Ops")
+                }
             }
         }
     }
@@ -111,7 +112,11 @@ fn main () {
                     if msg.is_binary() || msg.is_text() {
                         // println!("{}", msg);
                         let connected_clients_list = connected_clients_clone.clone();
-                        send_message_to_other_clients(cid,msg, connected_clients_list);
+                        if cloned_client.lock().unwrap().ws.lock().unwrap().can_write() {
+                            send_message_to_other_clients(cid,msg, connected_clients_list);
+                        } else {
+                            println!("Cant send cause connection closed")
+                        }
                         //    let send_object: tungstenite::Message = json_string.into();
                         //    websocket.send(send_object).expect("Could not send!")
                         
