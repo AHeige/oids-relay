@@ -131,14 +131,13 @@ fn main () {
                     }
                 } else {
                     let connected_clients_list = connected_clients_clone.clone();
-                    let msg = cloned_client.lock().unwrap().ws.lock().unwrap().read().expect("Could not read msg");
 
                     println!("Connection closed by client with id, {}", cid);
                     
                     
                     cloned_client.lock().unwrap().space_object.lock().unwrap().online = false;
 
-                    let space_object_json = serde_json::to_string::<SpaceObject>(cloned_client.lock().unwrap().space_object.lock().unwrap().into()).expect("Failed to serialize JSON");
+                    let space_object_json = serde_json::to_string::<SpaceObject>(&cloned_client.lock().unwrap().space_object.lock().unwrap()).expect("Failed to serialize JSON");
 
                     let space_object_msg = Message::Text(space_object_json);
 
