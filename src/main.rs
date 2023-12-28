@@ -1,4 +1,5 @@
 use std::net::{TcpListener, TcpStream};
+use serde_json::Value;
 use tungstenite::{accept, WebSocket, Message};
 use rand::{self, Rng};
 use std::sync::{Arc, Mutex};
@@ -13,11 +14,11 @@ fn main () {
         id: u32,
         name: String,
         ws: Arc<Mutex<WebSocket<TcpStream>>>,
-        space_object: Arc<Mutex<SpaceObject>>,
+        space_object: Arc<Mutex<String>>,
     }
 
     impl Client {
-        fn new(name: &str, id: u32, ws: Arc<Mutex<WebSocket<TcpStream>>>, space_object: Arc<Mutex<SpaceObject>>) -> Self {
+        fn new(name: &str, id: u32, ws: Arc<Mutex<WebSocket<TcpStream>>>, space_object: Arc<Mutex<String>>) -> Self {
            
             Self {
                 id,
@@ -43,6 +44,7 @@ fn main () {
     #[derive(Debug, Serialize, Deserialize)]
     struct SpaceObject {
         online: bool,
+        name: String,
     }
 
     
@@ -77,6 +79,7 @@ fn main () {
 
     fn send_message_to_other_clients(sender_id: u32, message: Message, connected_clients: Arc<Mutex<Vec<Arc<Mutex<Client>>>>>) {
         let mut clients = connected_clients.lock().unwrap();
+        println!("{}",message);
         for client in clients.iter_mut() {
             let msg = message.clone();
             if client.lock().unwrap().id != sender_id {
@@ -100,7 +103,7 @@ fn main () {
 
         let cid = generate_random_id();
         let ws = Arc::new(Mutex::new(accept(stream.expect("Stream err")).expect("Could not accept new connections")));
-        let client = Arc::new(Mutex::new(Client::new("Name", cid, ws.clone(), Arc::new(Mutex::new(SpaceObject{online: true})))));
+        let client = Arc::new(Mutex::new(Client::new("Name", cid, ws.clone(), Arc::new(Mutex::new("".to_string())))));
         println!("New client {}", client.lock().unwrap().id);
        
         let cloned_client = client.clone();
@@ -119,25 +122,19 @@ fn main () {
                     if msg.is_binary() || msg.is_text() {
                         // println!("{}", msg);
                         let connected_clients_list = connected_clients_clone.clone();
-                        let so: SpaceObject = serde_json::from_str(msg.to_text().unwrap()).expect("Failed to parse JSON");
+                        let so = serde_json::from_str::<Value>(msg.to_text().unwrap()).expect("Failed to parse JSON");
 
-                        cloned_client.lock().unwrap().space_object.lock().unwrap().online = so.online;
+                        let so_copy = Arc::new(Mutex::new(serde_json::to_string(&so).expect("Could not convert to JSON")));
+
+                        cloned_client.lock().unwrap().space_object = so_copy;
                         
-                            send_message_to_other_clients(cid,msg, connected_clients_list);
-                        
-                        //    let send_object: tungstenite::Message = json_string.into();
-                        //    websocket.send(send_object).expect("Could not send!")
-                        
+                        send_message_to_other_clients(cid,msg, connected_clients_list);
                     }
                 } else {
                     let connected_clients_list = connected_clients_clone.clone();
 
                     println!("Connection closed by client with id, {}", cid);
-                    
-                    
-                    cloned_client.lock().unwrap().space_object.lock().unwrap().online = false;
-
-                    let space_object_json = serde_json::to_string::<SpaceObject>(&cloned_client.lock().unwrap().space_object.lock().unwrap()).expect("Failed to serialize JSON");
+                    let space_object_json = serde_json::to_string::<String>(&cloned_client.lock().unwrap().space_object.lock().unwrap()).expect("Failed to serialize JSON");
 
                     let space_object_msg = Message::Text(space_object_json);
 
